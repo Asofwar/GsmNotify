@@ -1,0 +1,97 @@
+name: Android CI
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: "17"
+        cache: gradle
+
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+
+    # ⬇️ Авто-детект application-модулей и сборка assembleDebug по каждому
+    - name: Build APKs (auto-detect modules)
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Найти каталоги с build.gradle[.kts], где подключён плагин com.android.application
+        mapfile -t app_dirs < <(
+          git ls-files "**/build.gradle" "**/build.gradle.kts" \
+          | sed 's#/build\.gradle.*##' \
+          | sort -u \
+          | while read -r d; do
+              if grep -qE "com\.android\.application" "$d/build.gradle" 2>/dev/null || \
+                 grep -qE "com\.android\.application" "$d/build.gradle.kts" 2>/dev/null; then
+                echo "$d"
+              fi
+            done
+        )
+
+        if [ ${#app_dirs[@]} -eq 0 ]; then
+          echo "No application modules found; trying root assembleDebug"
+          ./gradlew assembleDebug
+        else
+          echo "Application modules: ${app_dirs[*]}"
+          for d in "${app_dirs[@]}"; do
+            if [ "$d" = "." ]; then
+              gp="";           # root-проект
+              task="assembleDebug"
+            else
+              gp=":${d//\//:}" # путь Gradle из пути каталога
+              task="$gp:assembleDebug"
+            fi
+            echo "Running: ./gradlew $task"
+            ./gradlew "$task"
+          done
+        fi
+
+    - name: Show build outputs (debug)
+      run: |
+        find . -type f -path "*/build/outputs/apk/*/*.apk" -printf "%p\n" | sort || true
+
+    - name: Locate APK files
+      id: locate_apk
+      shell: bash
+      run: |
+        set -e
+        mapfile -t apks < <(find . -type f -path "*/build/outputs/apk/*/*.apk" -print | sort)
+        if [ ${#apks[@]} -eq 0 ]; then
+          echo "No APKs found under */build/outputs/apk/*/*.apk" >&2
+          exit 1
+        fi
+        printf 'Found APKs:\n%s\n' "${apks[@]}"
+        {
+          echo "apk_files<<EOF"
+          printf '%s\n' "${apks[@]}"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: debug-apk
+        path: ${{ steps.locate_apk.outputs.apk_files }}
+
+    - name: Create GitHub Release
+      if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v${{ github.run_number }}
+        name: "Build ${{ github.run_number }}"
+        files: ${{ steps.locate_apk.outputs.apk_files }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
