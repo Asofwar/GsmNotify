@@ -25,7 +25,8 @@
             android:name="MainActivity"
             android:launchMode="singleInstance"
             android:windowSoftInputMode="stateHidden"
-            android:configChanges="orientation|keyboardHidden|screenSize">
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
