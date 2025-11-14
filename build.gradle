@@ -2,18 +2,18 @@
 
 buildscript {
     repositories {
-        jcenter()
         google()
+        mavenCentral()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:3.2.1'
+        classpath 'com.android.tools.build:gradle:8.2.2'
     }
 }
 
 allprojects {
     repositories {
-        jcenter()
         google()
+        mavenCentral()
         maven { url "https://jitpack.io" }
     }
 }
@@ -21,23 +21,41 @@ allprojects {
 
 apply plugin: 'com.android.application'
 
+def userHome = System.getProperty('user.home')
+def debugKeystore = file("${userHome}/.android/debug.keystore")
+def releaseKeystore = file("/home/adonai/devel/keystore/Adonai")
+
 android {
-    compileSdkVersion 27
+    namespace 'com.adonai.GsmNotify'
+    compileSdk 35
 
     defaultConfig {
         applicationId "com.adonai.GsmNotify"
         minSdkVersion 14
-        targetSdkVersion 27
+        targetSdkVersion 35
         versionCode 222
         versionName "2.2.2"
     }
 
     signingConfigs {
+        debug {
+            storeFile debugKeystore
+            storePassword "android"
+            keyAlias "androiddebugkey"
+            keyPassword "android"
+        }
         release {
-            storeFile file("/home/adonai/devel/keystore/Adonai")
-            storePassword "release"
-            keyAlias "adonai"
-            keyPassword "release"
+            if (releaseKeystore.exists()) {
+                storeFile releaseKeystore
+                storePassword "release"
+                keyAlias "adonai"
+                keyPassword "release"
+            } else {
+                initWith signingConfigs.debug
+                enableV1Signing = true
+                enableV2Signing = true
+                println "[GsmNotify] Release keystore not found at ${releaseKeystore}. Falling back to debug signing keys for CI builds."
+            }
         }
     }
 
@@ -61,13 +79,45 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_7
-        targetCompatibility JavaVersion.VERSION_1_7
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+def ensureDebugKeystore = tasks.register("ensureDebugKeystore") {
+    doLast {
+        if (!debugKeystore.exists()) {
+            debugKeystore.parentFile.mkdirs()
+
+            def javaHome = System.getenv("JAVA_HOME")
+            def keytoolCandidate = javaHome ? new File(javaHome, "bin/keytool") : null
+            def keytoolExecutable = keytoolCandidate?.exists() ? keytoolCandidate.absolutePath : "keytool"
+
+            println "[GsmNotify] Generating debug keystore at ${debugKeystore}"
+            project.exec {
+                executable keytoolExecutable
+                args "-genkeypair",
+                        "-alias", "androiddebugkey",
+                        "-keypass", "android",
+                        "-keystore", debugKeystore.absolutePath,
+                        "-storepass", "android",
+                        "-dname", "CN=Android Debug,O=Android,C=US",
+                        "-keyalg", "RSA",
+                        "-keysize", "2048",
+                        "-validity", "10000"
+            }
+        }
+    }
+}
+
+tasks.configureEach { task ->
+    if (task.name == "validateSigningDebug") {
+        task.dependsOn ensureDebugKeystore
     }
 }
 
 dependencies {
-    implementation 'com.google.code.gson:gson:2.8.2'                             // Json (De)Serializer
-    implementation 'com.j256.ormlite:ormlite-android:5.0'
+    implementation 'com.google.code.gson:gson:2.13.2'                             // Json (De)Serializer
+    implementation 'com.j256.ormlite:ormlite-android:6.1'
     implementation 'com.github.BlackBoxVision:datetimepicker-edittext:v0.3.3'
 }
