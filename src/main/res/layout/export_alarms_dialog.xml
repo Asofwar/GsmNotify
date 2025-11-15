@@ -7,7 +7,7 @@
     android:layout_height="match_parent"
     android:focusableInTouchMode="true">
 
-    <android.support.design.widget.TextInputLayout
+    <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
 
@@ -18,9 +18,9 @@
             android:layout_marginBottom="8dp"
             android:hint="@string/file_name"/>
 
-    </android.support.design.widget.TextInputLayout>
+    </com.google.android.material.textfield.TextInputLayout>
 
-    <android.support.design.widget.TextInputLayout
+    <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
 
@@ -32,9 +32,9 @@
             android:hint="@string/date_from"
             app:dateFormat="dd.MM.yyyy"/>
 
-    </android.support.design.widget.TextInputLayout>
+    </com.google.android.material.textfield.TextInputLayout>
 
-    <android.support.design.widget.TextInputLayout
+    <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
 
@@ -46,6 +46,6 @@
         android:hint="@string/date_to"
         app:dateFormat="dd.MM.yyyy"/>
 
-    </android.support.design.widget.TextInputLayout>
+    </com.google.android.material.textfield.TextInputLayout>
 
 </LinearLayout>

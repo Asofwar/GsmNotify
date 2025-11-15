@@ -16,7 +16,7 @@ public class ScreenOnReceiver extends BroadcastReceiver {
         if (action.equalsIgnoreCase(SCREEN_ON_RECEIVED)) {
             Intent broadcastIntent = new Intent(context, SMSReceiveService.class);
             broadcastIntent.putExtra("stop_alarm", true);
-            context.startService(broadcastIntent);
+            SMSReceiveService.enqueueWork(context, broadcastIntent);
         }
     }
 }

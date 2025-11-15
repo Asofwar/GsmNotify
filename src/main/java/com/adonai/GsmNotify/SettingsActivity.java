@@ -14,11 +14,11 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
-import android.support.v4.app.Fragment;
-import android.support.v4.app.FragmentActivity;
-import android.support.v4.app.FragmentManager;
-import android.support.v4.app.FragmentPagerAdapter;
-import android.support.v4.view.ViewPager;
+import androidx.fragment.app.Fragment;
+import androidx.fragment.app.FragmentActivity;
+import androidx.fragment.app.FragmentManager;
+import androidx.fragment.app.FragmentPagerAdapter;
+import androidx.viewpager.widget.ViewPager;
 import android.telephony.SmsManager;
 import android.text.TextUtils;
 import android.util.Log;
@@ -139,7 +139,7 @@ public class SettingsActivity extends FragmentActivity implements View.OnClickLi
 
         mPager = findViewById(R.id.settings_page_holder);
         mPager.setOffscreenPageLimit(mSettingsPages.length);
-        mPagerAdapter = new FragmentPagerAdapter(mFragmentManager) {
+        mPagerAdapter = new FragmentPagerAdapter(mFragmentManager, FragmentPagerAdapter.BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT) {
             @Override
             public Fragment getItem(int i) {
                 assert i < mSettingsPages.length;

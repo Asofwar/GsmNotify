@@ -24,7 +24,7 @@ public class IncomingSmsBroadcastReceiver extends BroadcastReceiver {
             broadcastIntent.putExtra("number", msgs[0].getOriginatingAddress());
             broadcastIntent.putExtra("text", texts);
 
-            context.startService(broadcastIntent);
+            SMSReceiveService.enqueueWork(context, broadcastIntent);
         }
 
     }

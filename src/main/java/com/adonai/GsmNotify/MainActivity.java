@@ -14,9 +14,9 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Bundle;
-import android.support.annotation.NonNull;
-import android.support.v4.app.ActivityCompat;
-import android.support.v4.content.PermissionChecker;
+import androidx.annotation.NonNull;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.PermissionChecker;
 import android.telephony.PhoneStateListener;
 import android.telephony.SmsManager;
 import android.telephony.TelephonyManager;
@@ -205,7 +205,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
             // stop ringing
             Intent broadcastIntent = new Intent(this, SMSReceiveService.class);
             broadcastIntent.putExtra("stop_alarm", true);
-            startService(broadcastIntent);
+            SMSReceiveService.enqueueWork(this, broadcastIntent);
         }
     }
 

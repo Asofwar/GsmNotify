@@ -1,7 +1,8 @@
 package com.adonai.GsmNotify.misc;
 
-import android.content.AsyncTaskLoader;
 import android.content.Context;
+
+import androidx.loader.content.AsyncTaskLoader;
 
 /**
  * Almost full copy-paste from
