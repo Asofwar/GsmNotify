@@ -10,6 +10,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -235,9 +236,15 @@ public class SettingsActivity extends FragmentActivity implements View.OnClickLi
     protected void onStart() {
         super.onStart();
         //--- When the SMS has been sent ---
-        registerReceiver(sentReceiver, new IntentFilter(Utils.SENT));
-        //--- When the SMS has been delivered. ---
-        registerReceiver(deliveryReceiver, new IntentFilter(Utils.DELIVERED));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(sentReceiver, new IntentFilter(Utils.SENT), Context.RECEIVER_NOT_EXPORTED);
+            //--- When the SMS has been delivered. ---
+            registerReceiver(deliveryReceiver, new IntentFilter(Utils.DELIVERED), Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(sentReceiver, new IntentFilter(Utils.SENT));
+            //--- When the SMS has been delivered. ---
+            registerReceiver(deliveryReceiver, new IntentFilter(Utils.DELIVERED));
+        }
 
         isRunning = true;
     }
