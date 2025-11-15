@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 import android.content.res.Resources;
 import android.os.Build;
+import android.text.TextUtils;
 import android.util.DisplayMetrics;
 
 import java.util.Collection;
@@ -144,5 +145,15 @@ public class Utils {
             }
         } // else: granted during installation
         return true;
+    }
+
+    public static String getDisplayName(Device.CommonSettings details) {
+        if (details == null) {
+            return "";
+        }
+        if (!TextUtils.isEmpty(details.name)) {
+            return details.name;
+        }
+        return details.number != null ? details.number : "";
     }
 }

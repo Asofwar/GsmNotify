@@ -159,7 +159,7 @@ public class SMSReceiveService extends Service implements Handler.Callback {
                         builder.setLargeIcon(largeNotifIcon);
                         builder.setAutoCancel(true);
                         builder.setContentTitle(getString(R.string.warning));
-                        builder.setContentText(settings.name + ": " + smsText);
+                        builder.setContentText(Utils.getDisplayName(settings) + ": " + smsText);
 
                         final Intent notificationClicker = new Intent(this, MainActivity.class);
                         notificationClicker.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -232,7 +232,7 @@ public class SMSReceiveService extends Service implements Handler.Callback {
         // add to history
         PersistManager manager = DbProvider.getTempHelper(this);
         HistoryEntry he = new HistoryEntry();
-        he.setDeviceName(deviceDetails.name);
+        he.setDeviceName(Utils.getDisplayName(deviceDetails));
         he.setEventDate(Calendar.getInstance().getTime());
         he.setSmsText(effectiveText);
         he.setStatus(statusForSms);
