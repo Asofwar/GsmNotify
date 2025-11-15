@@ -121,7 +121,9 @@ public class SelectorActivity extends AppCompatActivity implements View.OnClickL
                 Device.CommonSettings detailsLeft = mDeviceSettingsMap.get(lhs);
                 Device.CommonSettings detailsRight = mDeviceSettingsMap.get(rhs);
 
-                return  detailsLeft.name.compareTo(detailsRight.name);
+                String leftName = getDisplayName(detailsLeft);
+                String rightName = getDisplayName(detailsRight);
+                return leftName.compareTo(rightName);
             }
         });
         Log.e("timetrace", String.valueOf(System.currentTimeMillis() - a));
@@ -166,7 +168,7 @@ public class SelectorActivity extends AppCompatActivity implements View.OnClickL
             Device.CommonSettings details = mDeviceSettingsMap.get(devId);
             ButtonWithRedTriangle openDevice = new ButtonWithRedTriangle(this);
             openDevice.setWidth(LayoutParams.MATCH_PARENT);
-            openDevice.setText(details.name);
+            openDevice.setText(getDisplayName(details));
             openDevice.setUpperLeft(details.workOngoing);
             openDevice.setLowerRight(details.isGsmQaud);
             openDevice.setTag(devId);
@@ -189,7 +191,7 @@ public class SelectorActivity extends AppCompatActivity implements View.OnClickL
             Device.CommonSettings details = mDeviceSettingsMap.get(ID);
             ButtonWithRedTriangle viewer = new ButtonWithRedTriangle(this);
             viewer.setWidth(LayoutParams.MATCH_PARENT);
-            viewer.setText(details.name);
+            viewer.setText(getDisplayName(details));
             viewer.setUpperLeft(details.workOngoing);
             viewer.setLowerRight(details.isGsmQaud);
             viewer.setTag(ID);
@@ -485,7 +487,7 @@ public class SelectorActivity extends AppCompatActivity implements View.OnClickL
                         try {
                             List<HistoryEntry> entriesForDevice = manager.getHistoryDao().queryBuilder()
                                     .orderBy("eventDate", false)
-                                    .where().eq("deviceName", details.name)
+                                    .where().eq("deviceName", getDisplayName(details))
                                     .and().eq("archived", false).query();
                             for(HistoryEntry he : entriesForDevice) {
                                 currentStatus = he.getStatus();
@@ -590,7 +592,7 @@ public class SelectorActivity extends AppCompatActivity implements View.OnClickL
         private void restoreOldName() {
             Button deviceOpenButton = (Button) mMainLayout.getChildAt(currentQueried);
             Device.CommonSettings details = (Device.CommonSettings) deviceOpenButton.getTag(R.integer.device_details);
-            deviceOpenButton.setText(details.name);
+            deviceOpenButton.setText(getDisplayName(details));
         }
     }
 

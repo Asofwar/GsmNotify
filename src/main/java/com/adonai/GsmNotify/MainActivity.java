@@ -247,7 +247,8 @@ public class MainActivity extends Activity implements View.OnClickListener {
         if (!gson.equals("")) {
             mDevice = new Device();
             mDevice.details = new Gson().fromJson(gson, Device.CommonSettings.class);
-            setTitle(mDevice.details.name);
+            String displayName = Utils.getDisplayName(mDevice.details);
+            setTitle(displayName);
 
             // works for tablets, show additional info
             if (mDeviceInfo != null && mDevice.details.info != null) {
@@ -295,8 +296,9 @@ public class MainActivity extends Activity implements View.OnClickListener {
         // prefill text from DB
         try {
             RuntimeExceptionDao<HistoryEntry, Long> dao = DbProvider.getHelper().getHistoryDao();
+            String displayName = Utils.getDisplayName(mDevice.details);
             List<HistoryEntry> recentEntries = dao.queryBuilder().orderBy("eventDate", false).limit(5L)
-                    .where().eq("deviceName", mDevice.details.name).query();
+                    .where().eq("deviceName", displayName).query();
             Collections.reverse(recentEntries);
             for (HistoryEntry entry : recentEntries) {
                 incMessages.add(entry);
@@ -361,7 +363,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
                                 try {
                                     RuntimeExceptionDao<HistoryEntry, Long> dao = DbProvider.getHelper().getHistoryDao();
                                     DeleteBuilder<HistoryEntry, Long> stmt = dao.deleteBuilder();
-                                    stmt.where().eq("deviceName", mDevice.details.name);
+                                    stmt.where().eq("deviceName", Utils.getDisplayName(mDevice.details));
                                     dao.delete(stmt.prepare());
                                 } catch (SQLException e) {
                                     Toast.makeText(MainActivity.this, R.string.db_cant_delete_history, Toast.LENGTH_LONG).show();
@@ -397,8 +399,9 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 return true;
             }
             case R.id.device_history:
-                HistoryListFragment hlf = HistoryListFragment.newInstance(mDevice.details.name);
-                hlf.show(getFragmentManager(), "HistoryDialog_" + mDevice.details.name);
+                String displayName = Utils.getDisplayName(mDevice.details);
+                HistoryListFragment hlf = HistoryListFragment.newInstance(displayName);
+                hlf.show(getFragmentManager(), "HistoryDialog_" + displayName);
                 return true;
         }
 

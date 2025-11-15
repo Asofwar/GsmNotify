@@ -71,7 +71,8 @@ public class PersistManager extends OrmLiteSqliteOpenHelper {
                     String gson = preferences.getString(deviceNumber, null);
                     Device.CommonSettings settings = new Gson().fromJson(gson, Device.CommonSettings.class);
                     if(settings != null) {
-                        List<HistoryEntry> saved = getHistoryDao().queryForEq("deviceName", settings.name);
+                        String displayName = Utils.getDisplayName(settings);
+                        List<HistoryEntry> saved = getHistoryDao().queryForEq("deviceName", displayName);
                         for (HistoryEntry he : saved) {
                             he.setStatus(Utils.getStatusBySms(mContext, settings, he.getSmsText().toLowerCase()));
                             he.setArchived(he.getSmsText().contains(mContext.getString(R.string.archive_suffix)));

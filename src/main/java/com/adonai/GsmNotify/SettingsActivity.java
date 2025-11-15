@@ -20,6 +20,8 @@ import android.support.v4.app.FragmentManager;
 import android.support.v4.app.FragmentPagerAdapter;
 import android.support.v4.view.ViewPager;
 import android.telephony.SmsManager;
+import android.text.TextUtils;
+import android.util.Log;
 import android.util.Pair;
 import android.view.View;
 import android.widget.Button;
@@ -30,6 +32,9 @@ import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.ViewFlipper;
 
+import com.adonai.GsmNotify.database.DbProvider;
+import com.adonai.GsmNotify.database.PersistManager;
+import com.adonai.GsmNotify.entities.HistoryEntry;
 import com.adonai.GsmNotify.settings.SettingsFragment;
 import com.adonai.GsmNotify.settings.SettingsPage1;
 import com.adonai.GsmNotify.settings.SettingsPage2;
@@ -39,13 +44,17 @@ import com.adonai.GsmNotify.settings.SettingsPage5;
 import com.adonai.GsmNotify.settings.SettingsPage6;
 import com.adonai.GsmNotify.settings.SettingsPage7;
 import com.google.gson.Gson;
+import com.j256.ormlite.dao.RuntimeExceptionDao;
+import com.j256.ormlite.stmt.UpdateBuilder;
 
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 @SuppressLint("CommitPrefEdits")
 public class SettingsActivity extends FragmentActivity implements View.OnClickListener, Handler.Callback {
+    private static final String TAG = SettingsActivity.class.getSimpleName();
     final public static int HANDLE_STEP = 1;
     final public static int HANDLE_FINISH = 2;
     final public static int HANDLE_RESET = 3;
@@ -202,8 +211,10 @@ public class SettingsActivity extends FragmentActivity implements View.OnClickLi
         if (id != null) {
             mDevice.details = new Gson().fromJson(mPrefs.getString(id, ""), Device.CommonSettings.class);
 
-            if (mDevice.details.name != null) {
+            if (!TextUtils.isEmpty(mDevice.details.name)) {
                 mDeviceName.setText(mDevice.details.name);
+            } else {
+                mDeviceName.setText("");
             }
             if (mDevice.details.number != null) {
                 mDeviceNumber.setText(mDevice.details.number);
@@ -268,13 +279,14 @@ public class SettingsActivity extends FragmentActivity implements View.OnClickLi
                 break;
             }
             case R.id.device_apply_button: {
-                String newNumber = mDeviceNumber.getText().toString();
-                String newPassword = mDevicePassword.getText().toString();
-                String newName = mDeviceName.getText().toString();
-                String newInfo = mDeviceInfo.getText().toString();
+                String newNumber = mDeviceNumber.getText().toString().trim();
+                String newPassword = mDevicePassword.getText().toString().trim();
+                String newName = mDeviceName.getText().toString().trim();
+                String newInfo = mDeviceInfo.getText().toString().trim();
 
                 boolean validPassword = !newPassword.isEmpty() || mIsGsmQaud.isChecked();
-                if (validPassword && !newNumber.isEmpty() && !newName.isEmpty()) { // all fields are filled in
+                if (validPassword && !newNumber.isEmpty()) { // all required fields are filled in
+                    String previousDisplayName = Utils.getDisplayName(mDevice.details);
                     List<String> IDStrings = new ArrayList<>();
                     Collections.addAll(IDStrings, mPrefs.getString("IDs", "").split(";"));
 
@@ -294,9 +306,9 @@ public class SettingsActivity extends FragmentActivity implements View.OnClickLi
                         edit.remove(mDevice.details.number);
                     }
 
-                    mDevice.details.name = newName;
+                    mDevice.details.name = TextUtils.isEmpty(newName) ? null : newName;
                     mDevice.details.number = newNumber;
-                    mDevice.details.info = newInfo;
+                    mDevice.details.info = newInfo.isEmpty() ? null : newInfo;
                     mDevice.details.isGsmQaud = mIsGsmQaud.isChecked();
 
                     mEditDevice.setEnabled(!mIsGsmQaud.isChecked());
@@ -305,6 +317,11 @@ public class SettingsActivity extends FragmentActivity implements View.OnClickLi
                     edit.putString("IDs", Utils.join(IDStrings, ";"));
                     edit.putString(mDevice.details.number, new Gson().toJson(mDevice.details));
                     edit.commit();
+
+                    String newDisplayName = Utils.getDisplayName(mDevice.details);
+                    if (!TextUtils.equals(previousDisplayName, newDisplayName)) {
+                        migrateHistoryDisplayName(previousDisplayName, newDisplayName);
+                    }
 
                     Toast.makeText(this, R.string.settings_applied, Toast.LENGTH_SHORT).show();
 
@@ -343,6 +360,24 @@ public class SettingsActivity extends FragmentActivity implements View.OnClickLi
                 pd = ProgressDialog.show(this, getString(R.string.wait_please), getString(R.string.querying_device), true, false);
                 mHandler.sendMessage(mHandler.obtainMessage(HANDLE_STEP, 1));
                 break;
+            }
+    }
+
+    private void migrateHistoryDisplayName(String oldDisplayName, String newDisplayName) {
+        PersistManager helper = null;
+        try {
+            helper = DbProvider.getTempHelper(this);
+            RuntimeExceptionDao<HistoryEntry, Long> dao = helper.getHistoryDao();
+            UpdateBuilder<HistoryEntry, Long> updateBuilder = dao.updateBuilder();
+            updateBuilder.updateColumnValue("deviceName", newDisplayName);
+            updateBuilder.where().eq("deviceName", oldDisplayName);
+            updateBuilder.update();
+        } catch (SQLException | RuntimeException e) {
+            Log.w(TAG, "Unable to update history entries from '" + oldDisplayName + "' to '" + newDisplayName + "'", e);
+        } finally {
+            if (helper != null) {
+                DbProvider.releaseTempHelper();
+            }
         }
     }
 
