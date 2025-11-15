@@ -49,13 +49,15 @@ import static android.Manifest.permission.SEND_SMS;
 @SuppressLint("CommitPrefEdits")
 public class MainActivity extends Activity implements View.OnClickListener {
 
-    private static int SMS_PERMISSION_REQUEST_CODE = 0;
+    private static final int PERMISSIONS_REQUEST_CODE = 0;
 
     MessageQueue incMessages;
 
     SharedPreferences mPrefs;
     BroadcastReceiver sentReceiver, deliveryReceiver;
     Device mDevice;
+    private TelephonyManager mTelephonyManager;
+    private PhoneStateListener mCallListener;
 
     //ScrollView mScroll;
     Button mNotifyEnable, mNotifyDisable, mRelay1Enable, mRelay1Disable, mRelay2Enable, mRelay2Disable;
@@ -99,9 +101,9 @@ public class MainActivity extends Activity implements View.OnClickListener {
             setContentView(R.layout.main_phone);
         }
 
-        QaudEndCallListener callListener = new QaudEndCallListener();
-        TelephonyManager mTM = (TelephonyManager) this.getSystemService(Context.TELEPHONY_SERVICE);
-        mTM.listen(callListener, PhoneStateListener.LISTEN_CALL_STATE);
+        mTelephonyManager = (TelephonyManager) this.getSystemService(Context.TELEPHONY_SERVICE);
+        mCallListener = new QaudEndCallListener();
+        registerCallStateListenerIfPermitted();
 
         incMessages = new MessageQueue();
         sentReceiver = new SentConfirmReceiver(this);
@@ -167,10 +169,12 @@ public class MainActivity extends Activity implements View.OnClickListener {
     protected void onStart() {
         super.onStart();
 
-        // request permissions for SMS
-        List<String> denied = checkPermissions(READ_SMS, SEND_SMS, RECEIVE_SMS);
+        // request permissions required for SMS handling and call state monitoring
+        List<String> denied = checkPermissions(READ_SMS, SEND_SMS, RECEIVE_SMS, Manifest.permission.READ_PHONE_STATE);
         if (!denied.isEmpty()) {
-            ActivityCompat.requestPermissions(this, denied.toArray(new String[0]), SMS_PERMISSION_REQUEST_CODE);
+            ActivityCompat.requestPermissions(this, denied.toArray(new String[0]), PERMISSIONS_REQUEST_CODE);
+        } else {
+            registerCallStateListenerIfPermitted();
         }
 
         //--- When the SMS has been sent ---
@@ -185,11 +189,12 @@ public class MainActivity extends Activity implements View.OnClickListener {
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
-        if (requestCode == SMS_PERMISSION_REQUEST_CODE) {
+        if (requestCode == PERMISSIONS_REQUEST_CODE) {
             for (Integer res: grantResults) {
                 if (res != PermissionChecker.PERMISSION_GRANTED)
                     finish();
             }
+            registerCallStateListenerIfPermitted();
         }
     }
 
@@ -210,7 +215,22 @@ public class MainActivity extends Activity implements View.OnClickListener {
         unregisterReceiver(sentReceiver);
         unregisterReceiver(deliveryReceiver);
 
+        unregisterCallStateListener();
+
         isRunning = false;
+    }
+
+    private void registerCallStateListenerIfPermitted() {
+        if (mTelephonyManager != null && mCallListener != null &&
+                PermissionChecker.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) == PermissionChecker.PERMISSION_GRANTED) {
+            mTelephonyManager.listen(mCallListener, PhoneStateListener.LISTEN_CALL_STATE);
+        }
+    }
+
+    private void unregisterCallStateListener() {
+        if (mTelephonyManager != null && mCallListener != null) {
+            mTelephonyManager.listen(mCallListener, PhoneStateListener.LISTEN_NONE);
+        }
     }
 
     private List<String> checkPermissions(String... required) {
