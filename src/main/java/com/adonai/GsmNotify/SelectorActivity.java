@@ -1,20 +1,21 @@
 package com.adonai.GsmNotify;
 
-import android.annotation.SuppressLint;
-import android.app.Activity;
-import android.app.AlertDialog;
-import android.app.LoaderManager;
 import android.app.PendingIntent;
 import android.content.*;
-import android.content.pm.PackageManager;
 import android.graphics.PorterDuff;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
-import android.support.annotation.NonNull;
-import android.support.v7.app.AppCompatActivity;
+import android.os.Looper;
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.app.AlertDialog;
+import androidx.core.content.ContextCompat;
+import androidx.core.view.ViewCompat;
+import androidx.loader.app.LoaderManager;
+import androidx.loader.content.Loader;
 import android.telephony.SmsManager;
 import android.text.TextUtils;
 import android.util.Log;
@@ -43,11 +44,9 @@ import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
-import static android.Manifest.permission.WRITE_EXTERNAL_STORAGE;
 import static android.widget.LinearLayout.LayoutParams;
 import static com.adonai.GsmNotify.Utils.*;
 
-@SuppressLint("CommitPrefEdits")
 public class SelectorActivity extends AppCompatActivity implements View.OnClickListener {
 
     private SharedPreferences mPrefs;
@@ -63,6 +62,9 @@ public class SelectorActivity extends AppCompatActivity implements View.OnClickL
     static boolean isStatusChecking;
 
     private BroadcastReceiver sentReceiver, deliveryReceiver;
+    private final IntentFilter sentIntentFilter = new IntentFilter(SENT);
+    private final IntentFilter deliveredIntentFilter = new IntentFilter(DELIVERED);
+    private boolean receiversRegistered;
     private Handler mUiHandler;
     private Handler.Callback mStatusWalkCallback = new StatusWalkCallback();
 
@@ -81,9 +83,9 @@ public class SelectorActivity extends AppCompatActivity implements View.OnClickL
         sentReceiver = new SentConfirmReceiver(this);
         deliveryReceiver = new DeliveryConfirmReceiver(this);
 
-        getLoaderManager().initLoader(STATUS_LOADER, null, mLocalArchiveParseCallback);
+        LoaderManager.getInstance(this).initLoader(STATUS_LOADER, null, mLocalArchiveParseCallback);
 
-        mUiHandler = new Handler(mStatusWalkCallback);
+        mUiHandler = new Handler(Looper.getMainLooper(), mStatusWalkCallback);
     }
 
     @Override
@@ -98,42 +100,56 @@ public class SelectorActivity extends AppCompatActivity implements View.OnClickL
         }
 
         //--- When the SMS has been sent ---
-        registerReceiver(sentReceiver, new IntentFilter(SENT));
+        ContextCompat.registerReceiver(this, sentReceiver, sentIntentFilter, ContextCompat.RECEIVER_NOT_EXPORTED);
         //--- When the SMS has been delivered. ---
-        registerReceiver(deliveryReceiver, new IntentFilter(DELIVERED));
+        ContextCompat.registerReceiver(this, deliveryReceiver, deliveredIntentFilter, ContextCompat.RECEIVER_NOT_EXPORTED);
+        receiversRegistered = true;
 
         isRunning = true;
     }
 
     private void obtainAndSortDevices() {
         long a = System.currentTimeMillis();
-        mDeviceIds = mPrefs.getString("IDs", "").split(";");
-        mDeviceSettingsMap = new HashMap<>(mDeviceIds.length);
-        for(String devId : mDeviceIds) {
+        String storedIds = mPrefs.getString("IDs", "");
+        if (TextUtils.isEmpty(storedIds)) {
+            mDeviceIds = new String[0];
+            mDeviceSettingsMap = new HashMap<>(0);
+            return;
+        }
+
+        String[] rawIds = storedIds.split(";");
+        List<String> validIds = new ArrayList<>(rawIds.length);
+        mDeviceSettingsMap = new HashMap<>(rawIds.length);
+        for(String devId : rawIds) {
+            if (TextUtils.isEmpty(devId)) {
+                continue;
+            }
             String gson = mPrefs.getString(devId, "");
             Device.CommonSettings details = new Gson().fromJson(gson, Device.CommonSettings.class);
+            if (details == null) {
+                continue;
+            }
+            validIds.add(devId);
             mDeviceSettingsMap.put(devId, details);
         }
 
-        Arrays.sort(mDeviceIds, new Comparator<String>() {
-            @Override
-            public int compare(String lhs, String rhs) {
-                Device.CommonSettings detailsLeft = mDeviceSettingsMap.get(lhs);
-                Device.CommonSettings detailsRight = mDeviceSettingsMap.get(rhs);
+        mDeviceIds = validIds.toArray(new String[0]);
+        if (mDeviceIds.length == 0) {
+            return;
+        }
 
-                String leftName = getDisplayName(detailsLeft);
-                String rightName = getDisplayName(detailsRight);
-                return leftName.compareTo(rightName);
-            }
-        });
+        Arrays.sort(mDeviceIds, Comparator.comparing(id -> getDisplayName(mDeviceSettingsMap.get(id))));
         Log.e("timetrace", String.valueOf(System.currentTimeMillis() - a));
     }
 
     @Override
     protected void onStop() {
         super.onStop();
-        unregisterReceiver(sentReceiver);
-        unregisterReceiver(deliveryReceiver);
+        if (receiversRegistered) {
+            unregisterReceiver(sentReceiver);
+            unregisterReceiver(deliveryReceiver);
+            receiversRegistered = false;
+        }
 
         isRunning = false;
     }
@@ -151,7 +167,10 @@ public class SelectorActivity extends AppCompatActivity implements View.OnClickL
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         if (intent.hasExtra("number")) { // запущено из сервиса SMS
-            getLoaderManager().getLoader(STATUS_LOADER).onContentChanged();
+            Loader<List<DeviceStatus>> loader = LoaderManager.getInstance(this).getLoader(STATUS_LOADER);
+            if (loader != null) {
+                loader.onContentChanged();
+            }
             if(isStatusChecking) {
                 mUiHandler.sendMessage(mUiHandler.obtainMessage(HANDLE_ACK, intent.getStringExtra("number")));
             }
@@ -166,6 +185,9 @@ public class SelectorActivity extends AppCompatActivity implements View.OnClickL
 
         for (String devId : mDeviceIds) {
             Device.CommonSettings details = mDeviceSettingsMap.get(devId);
+            if (details == null) {
+                continue;
+            }
             ButtonWithRedTriangle openDevice = new ButtonWithRedTriangle(this);
             openDevice.setWidth(LayoutParams.MATCH_PARENT);
             openDevice.setText(getDisplayName(details));
@@ -189,6 +211,9 @@ public class SelectorActivity extends AppCompatActivity implements View.OnClickL
 
         for (String ID : mDeviceIds) {
             Device.CommonSettings details = mDeviceSettingsMap.get(ID);
+            if (details == null) {
+                continue;
+            }
             ButtonWithRedTriangle viewer = new ButtonWithRedTriangle(this);
             viewer.setWidth(LayoutParams.MATCH_PARENT);
             viewer.setText(getDisplayName(details));
@@ -244,7 +269,10 @@ public class SelectorActivity extends AppCompatActivity implements View.OnClickL
     @Override
     protected void onResume() {
         super.onResume();
-        getLoaderManager().getLoader(STATUS_LOADER).onContentChanged();
+        Loader<List<DeviceStatus>> loader = LoaderManager.getInstance(this).getLoader(STATUS_LOADER);
+        if (loader != null) {
+            loader.onContentChanged();
+        }
     }
 
     @Override
@@ -255,9 +283,7 @@ public class SelectorActivity extends AppCompatActivity implements View.OnClickL
                 shouldOpen = !shouldOpen;
 
                 // write to prefs
-                SharedPreferences.Editor edit = mPrefs.edit();
-                edit.putBoolean(SMSReceiveService.OPEN_ON_SMS_KEY, shouldOpen);
-                edit.commit();
+                mPrefs.edit().putBoolean(SMSReceiveService.OPEN_ON_SMS_KEY, shouldOpen).apply();
 
                 // update menu checked state
                 invalidateOptionsMenu();
@@ -273,7 +299,7 @@ public class SelectorActivity extends AppCompatActivity implements View.OnClickL
                 if(shouldRing) {
                     edit.putBoolean(SMSReceiveService.RING_ON_ALARM_SMS_KEY, !shouldRing); // exclusive
                 }
-                edit.commit();
+                edit.apply();
 
                 // update menu checked state
                 invalidateOptionsMenu();
@@ -289,7 +315,7 @@ public class SelectorActivity extends AppCompatActivity implements View.OnClickL
                 if(shouldRing) {
                     edit.putBoolean(SMSReceiveService.RING_ON_SMS_KEY, !shouldRing); // exclusive
                 }
-                edit.commit();
+                edit.apply();
 
                 // update menu checked state
                 invalidateOptionsMenu();
@@ -329,7 +355,10 @@ public class SelectorActivity extends AppCompatActivity implements View.OnClickL
                                     DeleteBuilder<HistoryEntry, Long> db = manager.getHistoryDao().deleteBuilder();
                                     db.where().lt("eventDate", prevMonth.getTime());
                                     db.delete();
-                                    getLoaderManager().getLoader(STATUS_LOADER).onContentChanged();
+                                    Loader<List<DeviceStatus>> loader = LoaderManager.getInstance(SelectorActivity.this).getLoader(STATUS_LOADER);
+                                    if (loader != null) {
+                                        loader.onContentChanged();
+                                    }
                                 } catch (SQLException e) {
                                     Toast.makeText(SelectorActivity.this, R.string.db_cant_delete_history, Toast.LENGTH_LONG).show();
                                 }
@@ -343,16 +372,13 @@ public class SelectorActivity extends AppCompatActivity implements View.OnClickL
                 startActivity(intent);
                 return true;
             case R.id.export_csv_data:
-                if (!Utils.checkAndRequestPermissions(this, WRITE_EXTERNAL_STORAGE))
-                    return false;
-
                 View export = View.inflate(this, R.layout.export_alarms_dialog, null);
 
                 DateFormat ddMMyyyy = new SimpleDateFormat("dd/MM/yyyy", Locale.getDefault());
                 Calendar minDate = Calendar.getInstance();
                 minDate.add(Calendar.YEAR, -2);
 
-                final DatePickerEditText dateFromPicker = (DatePickerEditText) export.findViewById(R.id.date_from);
+                final DatePickerEditText dateFromPicker = export.findViewById(R.id.date_from);
                 dateFromPicker.setMinDate(ddMMyyyy.format(minDate.getTime())); // previous year
                 dateFromPicker.setManager(getSupportFragmentManager());
                 dateFromPicker.setDate(minDate);
@@ -399,28 +425,6 @@ public class SelectorActivity extends AppCompatActivity implements View.OnClickL
         return false;
     }
 
-    /**
-     * If user declined our request, just close the activity entirely.
-     * @param requestCode request code that was entered in {@link Activity#requestPermissions(String[], int)}
-     * @param permissions permission array that was entered in {@link Activity#requestPermissions(String[], int)}
-     * @param grantResults results of permission request. Indexes of permissions array are linked with these
-     */
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-
-        if (requestCode != PERMISSIONS_REQUEST_CODE) {
-            return;
-        }
-
-        for (int i = 0; i < permissions.length; ++i) {
-            if (TextUtils.equals(permissions[i], WRITE_EXTERNAL_STORAGE)
-                    && grantResults[i] != PackageManager.PERMISSION_GRANTED) {
-                finish(); // user denied our request, don't bother again on resume
-            }
-        }
-    }
-
     private void exportToCsv(String name, List<HistoryEntry> exports) {
         StringBuilder csv = new StringBuilder(exports.size() * 200); // 140 sms text + 40-50 date/status/address
         csv.append(getString(R.string.csv_first_row)).append("\n");
@@ -437,24 +441,25 @@ public class SelectorActivity extends AppCompatActivity implements View.OnClickL
                     .append('\n');
         }
 
-        saveStringToSD(name, csv.toString());
+        saveStringToAppStorage(name, csv.toString());
     }
 
-    private void saveStringToSD(String name, String csv) {
-        if (!Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED))
+    private void saveStringToAppStorage(String name, String csv) {
+        File baseDir = getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS);
+        if (baseDir == null) {
+            baseDir = getFilesDir();
+        }
+
+        File exportDir = new File(baseDir, "Signal");
+        if (!exportDir.exists() && !exportDir.mkdirs()) {
+            Toast.makeText(this, R.string.error_saving_csv, Toast.LENGTH_SHORT).show();
             return;
+        }
 
-        File SD = Environment.getExternalStorageDirectory();
-        File externalDir = new File(SD, "Signal");
-        if (!externalDir.exists())
-            externalDir.mkdirs();
+        File toFile = new File(exportDir, name);
 
-        File toFile = new File(externalDir, name);
-
-        try {
-            Writer writer = new FileWriter(toFile);
+        try (Writer writer = new FileWriter(toFile)) {
             writer.write(csv);
-            writer.close();
             Toast.makeText(this, getString(R.string.saved_to) + toFile.getAbsolutePath(), Toast.LENGTH_SHORT).show();
         } catch (IOException e) {
             Toast.makeText(this, R.string.error_saving_csv, Toast.LENGTH_SHORT).show();
@@ -478,12 +483,20 @@ public class SelectorActivity extends AppCompatActivity implements View.OnClickL
                 @NonNull
                 @Override
                 public List<DeviceStatus> loadInBackground() {
+                    if (mDeviceIds == null || mDeviceIds.length == 0) {
+                        return Collections.emptyList();
+                    }
+
                     List<DeviceStatus> devStatuses = new ArrayList<>(mDeviceIds.length);
 
                     PersistManager manager = DbProvider.getTempHelper(SelectorActivity.this);
                     for (String deviceId : mDeviceIds) {
                         DeviceStatus currentStatus = DeviceStatus.UNKNOWN;
                         Device.CommonSettings details = mDeviceSettingsMap.get(deviceId);
+                        if (details == null) {
+                            devStatuses.add(currentStatus);
+                            continue;
+                        }
                         try {
                             List<HistoryEntry> entriesForDevice = manager.getHistoryDao().queryBuilder()
                                     .orderBy("eventDate", false)
@@ -507,29 +520,35 @@ public class SelectorActivity extends AppCompatActivity implements View.OnClickL
         }
 
         @Override
-        @SuppressWarnings("deprecation")
         public void onLoadFinished(Loader<List<DeviceStatus>> loader, List<DeviceStatus> statusesRetrieved) {
             int currentButtonIndex = 0;
             for(DeviceStatus status : statusesRetrieved) {
-                Button child = (Button) mMainLayout.getChildAt(currentButtonIndex++);
+                Button child = getDeviceButton(currentButtonIndex++);
+                if (child == null) {
+                    continue;
+                }
 
-                Drawable newBackground = child.getBackground().mutate();
+                Drawable background = child.getBackground();
+                if (background == null) {
+                    continue;
+                }
+                Drawable newBackground = background.mutate();
                 switch (status) {
                     case ARMED:
-                        newBackground.setColorFilter(getResources().getColor(R.color.dark_yellow), PorterDuff.Mode.MULTIPLY);
+                        newBackground.setColorFilter(ContextCompat.getColor(SelectorActivity.this, R.color.dark_yellow), PorterDuff.Mode.MULTIPLY);
                         break;
                     case DISARMED:
-                        newBackground.setColorFilter(getResources().getColor(R.color.dark_green), PorterDuff.Mode.MULTIPLY);
+                        newBackground.setColorFilter(ContextCompat.getColor(SelectorActivity.this, R.color.dark_green), PorterDuff.Mode.MULTIPLY);
                         break;
                     case ALARM:
-                        newBackground.setColorFilter(getResources().getColor(R.color.dark_red), PorterDuff.Mode.MULTIPLY);
+                        newBackground.setColorFilter(ContextCompat.getColor(SelectorActivity.this, R.color.dark_red), PorterDuff.Mode.MULTIPLY);
                         break;
                     case UNKNOWN:
                         // leave the same
                         newBackground.clearColorFilter();
                         break;
                 }
-                child.setBackgroundDrawable(newBackground);
+                ViewCompat.setBackground(child, newBackground);
             }
         }
 
@@ -542,25 +561,37 @@ public class SelectorActivity extends AppCompatActivity implements View.OnClickL
     private class StatusWalkCallback implements Handler.Callback {
         private int currentQueried;
 
+        // TODO: Replace the manual Handler-driven SMS polling with WorkManager when telephony interactions are modernized.
         @Override
         public boolean handleMessage(Message msg) {
             switch (msg.what) {
                 case HANDLE_START:
+                    if (mDeviceIds == null || mDeviceIds.length == 0) {
+                        return true;
+                    }
                     currentQueried = 0;
                     mUiHandler.sendEmptyMessage(HANDLE_SEND);
                     isStatusChecking = true;
                     invalidateOptionsMenu();
                     return true;
                 case HANDLE_SEND:
-                    Button deviceOpenButton = (Button) mMainLayout.getChildAt(currentQueried);
+                    Button deviceOpenButton = getDeviceButton(currentQueried);
+                    if (deviceOpenButton == null) {
+                        continueQueryIfNeeded();
+                        return true;
+                    }
                     Device.CommonSettings details = (Device.CommonSettings) deviceOpenButton.getTag(R.integer.device_details);
+                    if (details == null) {
+                        continueQueryIfNeeded();
+                        return true;
+                    }
                     deviceOpenButton.setText("→ " + deviceOpenButton.getText() + " ←");
                     sendStatusQuerySms(details);
                     mUiHandler.sendEmptyMessageDelayed(HANDLE_TIMEOUT, SMS_ROUNDTRIP_TIMEOUT);
                     return true;
                 case HANDLE_ACK:
                     String number = (String) msg.obj;
-                    if(number.equals(mDeviceIds[currentQueried])) { // it's current queried device's status message!
+                    if(currentQueried < mDeviceIds.length && number.equals(mDeviceIds[currentQueried])) { // it's current queried device's status message!
                         mUiHandler.removeMessages(HANDLE_TIMEOUT);
                         continueQueryIfNeeded();
                     }
@@ -582,6 +613,10 @@ public class SelectorActivity extends AppCompatActivity implements View.OnClickL
 
         private void continueQueryIfNeeded() {
             restoreOldName();
+            if(mDeviceIds == null || mDeviceIds.length == 0) {
+                mUiHandler.sendEmptyMessage(HANDLE_FINISH);
+                return;
+            }
             if(mDeviceIds.length > ++currentQueried) { // query next
                 mUiHandler.sendEmptyMessage(HANDLE_SEND);
             } else { // finish
@@ -590,16 +625,32 @@ public class SelectorActivity extends AppCompatActivity implements View.OnClickL
         }
 
         private void restoreOldName() {
-            Button deviceOpenButton = (Button) mMainLayout.getChildAt(currentQueried);
+            Button deviceOpenButton = getDeviceButton(currentQueried);
+            if (deviceOpenButton == null) {
+                return;
+            }
             Device.CommonSettings details = (Device.CommonSettings) deviceOpenButton.getTag(R.integer.device_details);
-            deviceOpenButton.setText(getDisplayName(details));
+            if (details != null) {
+                deviceOpenButton.setText(getDisplayName(details));
+            }
         }
     }
 
     public void sendStatusQuerySms(Device.CommonSettings details) {
-        PendingIntent sentPI = PendingIntent.getBroadcast(this, 0, new Intent(SENT), 0);
-        PendingIntent deliveredPI = PendingIntent.getBroadcast(this, 0, new Intent(DELIVERED), 0);
+        PendingIntent sentPI = PendingIntent.getBroadcast(this, 0, new Intent(SENT), PendingIntent.FLAG_IMMUTABLE);
+        PendingIntent deliveredPI = PendingIntent.getBroadcast(this, 0, new Intent(DELIVERED), PendingIntent.FLAG_IMMUTABLE);
         SmsManager sms = SmsManager.getDefault();
         sms.sendTextMessage(details.number, null, "*" + details.password + "#_info#", sentPI, deliveredPI);
+    }
+
+    private Button getDeviceButton(int index) {
+        if (mMainLayout == null) {
+            return null;
+        }
+        View child = mMainLayout.getChildAt(index);
+        if (child instanceof Button) {
+            return (Button) child;
+        }
+        return null;
     }
 }

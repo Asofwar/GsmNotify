@@ -1,8 +1,8 @@
 package com.adonai.GsmNotify;
 
-import android.app.Activity;
-import android.app.Service;
+import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
@@ -13,7 +13,6 @@ import android.graphics.BitmapFactory;
 import android.media.AudioManager;
 import android.media.ToneGenerator;
 import android.os.Handler;
-import android.os.IBinder;
 import android.os.Message;
 import android.provider.ContactsContract;
 import android.provider.ContactsContract.CommonDataKinds.Phone;
@@ -25,6 +24,9 @@ import com.adonai.GsmNotify.database.PersistManager;
 import com.adonai.GsmNotify.entities.HistoryEntry;
 import com.google.gson.Gson;
 
+import androidx.annotation.NonNull;
+import androidx.core.app.JobIntentService;
+
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collections;
@@ -34,7 +36,8 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class SMSReceiveService extends Service implements Handler.Callback {
+public class SMSReceiveService extends JobIntentService implements Handler.Callback {
+    private static final int JOB_ID = 1501;
     final public static String PREFERENCES = "devicePrefs";
 
     public static final String OPEN_ON_SMS_KEY = "open.on.sms";
@@ -45,23 +48,15 @@ public class SMSReceiveService extends Service implements Handler.Callback {
     
     private static final Pattern SMS_WHO_ARMED_MATCHER = Pattern.compile("(?<=from )\\+?\\d+");
 
-    Activity boundListener;
     SharedPreferences preferences;
     BroadcastReceiver mScreenStateReceiver;
     ToneGenerator mToneGenerator;
     Bitmap largeNotifIcon;
 
     Handler mHandler;
-    
-    @Override
-    public IBinder onBind(Intent intent) {
-        return null;
-    }
 
-    @Override
-    public boolean onUnbind(Intent intent) {
-        boundListener = null;
-        return false;
+    public static void enqueueWork(Context context, Intent work) {
+        JobIntentService.enqueueWork(context, SMSReceiveService.class, JOB_ID, work);
     }
 
     @Override
@@ -90,11 +85,12 @@ public class SMSReceiveService extends Service implements Handler.Callback {
         super.onDestroy();
         mToneGenerator.release();
         unregisterReceiver(mScreenStateReceiver);
+        mHandler.removeCallbacksAndMessages(null);
     }
 
     @SuppressWarnings("deprecation")
     @Override
-    public int onStartCommand(Intent intent, int flags, int startId) {
+    protected void onHandleWork(@NonNull Intent intent) {
         if (intent != null && intent.hasExtra("number")) {
             String smsNumber = intent.getStringExtra("number");
             String smsText = intent.getStringExtra("text");
@@ -191,8 +187,6 @@ public class SMSReceiveService extends Service implements Handler.Callback {
             mHandler.removeMessages(TICK_RING);
             mToneGenerator.stopTone();
         }
-
-        return START_STICKY;
     }
 
     private Map<String, String> retrieveContacts() {

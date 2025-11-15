@@ -1,25 +1,8 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
-buildscript {
-    repositories {
-        google()
-        mavenCentral()
-    }
-    dependencies {
-        classpath 'com.android.tools.build:gradle:8.2.2'
-    }
+plugins {
+    id 'com.android.application' version '8.5.1'
 }
-
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-        maven { url "https://jitpack.io" }
-    }
-}
-
-
-apply plugin: 'com.android.application'
 
 def userHome = System.getProperty('user.home')
 def debugKeystore = file("${userHome}/.android/debug.keystore")
@@ -31,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId "com.adonai.GsmNotify"
-        minSdkVersion 14
+        minSdkVersion 21
         targetSdkVersion 35
         versionCode 222
         versionName "2.2.2"
@@ -120,6 +103,11 @@ tasks.configureEach { task ->
 }
 
 dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.core:core:1.13.1'
+    implementation 'androidx.fragment:fragment:1.7.1'
+    implementation 'androidx.viewpager:viewpager:1.0.0'
+    implementation 'com.google.android.material:material:1.12.0'
     implementation 'com.google.code.gson:gson:2.13.2'                             // Json (De)Serializer
     implementation 'com.j256.ormlite:ormlite-android:6.1'
     implementation 'com.github.BlackBoxVision:datetimepicker-edittext:v0.3.3'
